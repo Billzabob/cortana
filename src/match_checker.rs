@@ -1,7 +1,8 @@
-mod request;
-mod response;
+pub mod request;
+pub mod response;
 
-use futures::{future, FutureExt};
+use async_stream::stream;
+use futures::{future, FutureExt, Stream};
 use request::{Limit, Request};
 use response::Response;
 use std::error::Error;
@@ -9,10 +10,13 @@ use std::time::Duration;
 use tokio::time;
 use tokio_postgres::{Client, Statement};
 
-pub async fn check_for_new_matches(client: &Client) {
+pub fn check_for_new_matches(client: &Client) -> impl Stream<Item = Response> + '_ {
     let mut interval = time::interval(Duration::from_secs(5));
-    loop {
+    stream! {
+      loop {
         interval.tick().await;
+
+        println!("tick");
 
         let statement = client
             .prepare("update users set latest_match_id = $1 where gamertag = $2")
@@ -27,6 +31,11 @@ pub async fn check_for_new_matches(client: &Client) {
             .collect();
 
         future::join_all(updates).await;
+
+        for game in new_games {
+          yield game;
+        }
+      }
     }
 }
 
