@@ -16,14 +16,43 @@ use std::{env, sync::Arc};
 
 struct Handler;
 
+static EMOJIS: [&str; 22] = [
+    "<:Boogeyman:931631927486734417>",
+    "<:Demon:931631928120066088>",
+    "<:DoubleKill:931631928023597066>",
+    "<:Extermination:931631929239949343>",
+    "<:GrappleJack:931631927788728342>",
+    "<:GrimReaper:931631928136826900>",
+    "<:KillingFrenzy:931631928497541171>",
+    "<:KillingSpree:931631928476598302>",
+    "<:Killionaire:931631929311244370>",
+    "<:Killjoy:931631928585642055>",
+    "<:Killtastrophe:931631929667780608>",
+    "<:Killtrocity:931631929642590228>",
+    "<:Nightmare:931631929067986944>",
+    "<:Ninja:931631929697136770>",
+    "<:NoScope:931631929139277874>",
+    "<:Overkill:931631929617448970>",
+    "<:Perfection:931631929646796870>",
+    "<:Quigley:931631929663569980>",
+    "<:Rampage:931631929420296202>",
+    "<:RunningRiot:931631929621622875>",
+    "<:Snipe:931631929575473192>",
+    "<:TripleKill:931631929185411124>",
+];
+
+fn name_to_emoji(name: &str) -> Option<&str> {
+    let name: String = name.chars().filter(|c| !c.is_whitespace()).collect();
+    EMOJIS
+        .iter()
+        .find(|emoji| emoji.contains(&format!(":{}:", name)))
+        .copied()
+}
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, _ctx: Context, msg: Message) {
-        if msg.content.starts_with("player:") {
-            let gamertag = &msg.content[8..];
-
-            println!("Requested player: {}", gamertag);
-        }
+        println!("Content: {}", msg.content);
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
@@ -45,25 +74,51 @@ async fn send_match_results(
         Outcome::Loss => ("LOST", (255, 0, 0)),
     };
 
+    let stats = &data.player.stats.core;
+
+    let emblem_url = get_emblem(&response.additional.gamertag)
+        .await
+        .expect("emblem")
+        .data
+        .emblem_url;
+
+    let medals = &data.player.stats.core.breakdowns.medals;
+    let medal_string = medals
+        .iter()
+        .map(|m| m.name.as_str())
+        .filter_map(|name| name_to_emoji(name))
+        .fold(String::new(), |acc, a| acc + a);
+
     let message = channel_id
         .send_message(http, |m| {
             m.embed(|e| {
                 e.title(format!(
-                    "{} {} a match!",
-                    response.additional.gamertag, result
+                    "{} {} a game of {}!",
+                    response.additional.gamertag, result, data.details.category.name
                 ))
-                .description("This is a description")
                 .color(color)
-                .fields(vec![
-                    ("This is the first field", "This is a field body", true),
-                    ("This is the second field", "Both fields are inline", true),
-                ])
                 .field(
-                    "This is the third field",
-                    "This is not an inline field",
-                    false,
+                    "KDA",
+                    format!(
+                        "{}/{}/{}",
+                        stats.summary.kills, stats.summary.deaths, stats.summary.assists
+                    ),
+                    true,
                 )
-                .footer(|f| f.text("This is a footer"))
+                .field(
+                    "Accuracy",
+                    format!("{}%", stats.shots.accuracy.round()),
+                    true,
+                )
+                .field("Damage Dealt", stats.damage.dealt, true)
+                .field("Damage Taken", stats.damage.taken, true)
+                .field("Medals", medal_string, true)
+                .image(&data.details.map.asset.thumbnail_url)
+                .url(format!(
+                    "https://halotracker.com/halo-infinite/match/{}",
+                    data.id
+                ))
+                .thumbnail(emblem_url)
                 .timestamp(timestamp)
             })
         })
@@ -129,4 +184,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize)]
+struct Request {
+    gamertag: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Resp {
+    data: Data,
+}
+
+#[derive(Debug, Deserialize)]
+struct Data {
+    emblem_url: String,
+}
+
+async fn get_emblem(gamertag: &str) -> Result<Resp, Box<dyn Error>> {
+    let request = Request {
+        gamertag: gamertag.to_owned(),
+    };
+
+    let token = std::env::var("HALO_API_TOKEN")?;
+
+    let response = reqwest::Client::new()
+        .post("https://halo.api.stdlib.com/infinite@0.3.3/appearance")
+        .bearer_auth(token)
+        .json(&request)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    Ok(response)
 }
