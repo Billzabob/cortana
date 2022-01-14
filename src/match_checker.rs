@@ -27,13 +27,15 @@ pub fn check_for_new_matches(client: &Client) -> impl Stream<Item = Response> + 
 
         let updates: Vec<_> = new_games
             .iter()
-            .map(|game| update_match(game, client, &statement))
+            .map(|game| update_match(&game.0, client, &statement))
             .collect();
 
         future::join_all(updates).await;
 
         for game in new_games {
-          yield game;
+            if game.1 {
+                yield game.0;
+            }
         }
       }
     }
@@ -48,16 +50,13 @@ async fn update_match(
     let gamertag = game.additional.gamertag.as_str();
 
     client
-        .execute(statement, &[&latest_match_id, &gamertag])
+        .execute(statement, &[&latest_match_id, &gamertag.to_lowercase()])
         .await
 }
 
-async fn get_new_games(client: &Client) -> Vec<Response> {
+async fn get_new_games(client: &Client) -> Vec<(Response, bool)> {
     let rows = client
-        .query(
-            "select gamertag, latest_match_id from users where enabled",
-            &[],
-        )
+        .query("select gamertag, latest_match_id, enabled from users", &[])
         .await
         .expect("new matches SQL");
 
@@ -66,11 +65,12 @@ async fn get_new_games(client: &Client) -> Vec<Response> {
         .map(|row| {
             let gamertag: &str = row.get(0);
             let last_match_id: Option<&str> = row.get(1);
+            let enabled: bool = row.get(2);
 
             get_latest_match(gamertag).map(move |game| match game {
                 Ok(game) => {
                     if game.data.first().map(|data| data.id.as_str()) != last_match_id {
-                        Some(game)
+                        Some((game, enabled))
                     } else {
                         None
                     }

@@ -5,16 +5,29 @@ use match_checker::check_for_new_matches;
 use match_checker::response::{Outcome, Response};
 use openssl::ssl::{SslConnector, SslMethod};
 use postgres_openssl::MakeTlsConnector;
+use serenity::model::id::{GuildId, UserId};
 use serenity::{
     async_trait,
     http::Http,
-    model::{channel::Message, gateway::Ready, id::ChannelId},
+    model::{
+        channel::Message,
+        gateway::Ready,
+        id::ChannelId,
+        interactions::{
+            application_command::{
+                ApplicationCommandInteractionDataOptionValue, ApplicationCommandOptionType,
+            },
+            Interaction, InteractionResponseType,
+        },
+    },
     prelude::*,
 };
 use std::error::Error;
 use std::{env, sync::Arc};
 
-struct Handler;
+struct Handler {
+    client: Arc<tokio_postgres::Client>,
+}
 
 static EMOJIS: [&str; 22] = [
     "<:Boogeyman:931631927486734417>",
@@ -51,12 +64,108 @@ fn name_to_emoji(name: &str) -> Option<&str> {
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, _ctx: Context, msg: Message) {
-        println!("Content: {}", msg.content);
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+            let content = match command.data.name.as_str() {
+                "register" => {
+                    let options = command
+                        .data
+                        .options
+                        .get(0)
+                        .expect("Expected a gamertag option")
+                        .resolved
+                        .as_ref()
+                        .expect("Expected a gamertag");
+
+                    match options {
+                        ApplicationCommandInteractionDataOptionValue::String(gamertag) => {
+                            register_gamertag(gamertag, command.user.id, &self.client).await
+                        }
+                        _ => unreachable!("Command type"),
+                    }
+                }
+                "toggle" => toggle_user(command.user.id, &self.client).await,
+                _ => unreachable!("Unknown command"),
+            };
+
+            if let Err(why) = command
+                .create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content(content))
+                })
+                .await
+            {
+                println!("Cannot respond to slash command: {}", why);
+            }
+        }
     }
 
-    async fn ready(&self, _: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        let guild_id = GuildId(460204093722591232);
+
+        let commands = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
+            commands
+                .create_application_command(|command| {
+                    command
+                        .name("register")
+                        .description("Register yourself for match updates")
+                        .create_option(|option| {
+                            option
+                                .name("gamertag")
+                                .description("Your GamerTag")
+                                .kind(ApplicationCommandOptionType::String)
+                                .required(true)
+                        })
+                })
+                .create_application_command(|command| {
+                    command
+                        .name("toggle")
+                        .description("Toggle whether your games are displayed")
+                })
+        })
+        .await;
+
+        println!(
+            "I now have the following guild slash commands: {:#?}",
+            commands
+        );
+
         println!("{} is connected!", ready.user.name);
+    }
+}
+
+async fn register_gamertag(
+    gamertag: &str,
+    user_id: UserId,
+    client: &tokio_postgres::Client,
+) -> String {
+    let user_id = user_id.0 as i64;
+    let result = client
+        .execute(
+            "insert into users (discord_id, gamertag) values ($1, $2) on conflict (discord_id) do update set gamertag = EXCLUDED.gamertag",
+            &[&user_id, &gamertag.to_lowercase()],
+        )
+        .await;
+    match result {
+        Ok(_) => format!("Registered {}", gamertag),
+        Err(_) => format!("Someone has already registered as {}", gamertag),
+    }
+}
+
+async fn toggle_user(user_id: UserId, client: &tokio_postgres::Client) -> String {
+    let user_id = user_id.0 as i64;
+    let result = client
+        .query(
+            "update users set enabled = not enabled where discord_id = $1 returning enabled",
+            &[&user_id],
+        )
+        .await;
+    let toggle: bool = result.unwrap().first().unwrap().get(0);
+    if toggle {
+        "Your matches will now be shown again".to_owned()
+    } else {
+        "You will no longer see your matches".to_owned()
     }
 }
 
@@ -83,11 +192,15 @@ async fn send_match_results(
         .emblem_url;
 
     let medals = &data.player.stats.core.breakdowns.medals;
-    let medal_string = medals
+    let mut medal_string = medals
         .iter()
         .map(|m| m.name.as_str())
         .filter_map(|name| name_to_emoji(name))
         .fold(String::new(), |acc, a| acc + a);
+
+    if medal_string.is_empty() {
+        medal_string = "None 😔".to_owned();
+    }
 
     let message = channel_id
         .send_message(http, |m| {
@@ -145,12 +258,12 @@ async fn connect_to_db() -> Result<tokio_postgres::Client, Box<dyn Error>> {
     Ok(client)
 }
 
-async fn send_matches(client: &tokio_postgres::Client, http: Arc<Http>) {
-    let new_matches = check_for_new_matches(client);
+async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
+    let new_matches = check_for_new_matches(&client);
 
     futures::pin_mut!(new_matches);
 
-    let channel = ChannelId(689701123967156423);
+    let channel = ChannelId(538404211344277504);
 
     while let Some(game) = new_matches.next().await {
         println!("{}", game.additional.gamertag);
@@ -163,23 +276,20 @@ async fn send_matches(client: &tokio_postgres::Client, http: Arc<Http>) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let sql_client = connect_to_db().await?;
-
-    let rows = sql_client
-        .query("SELECT $1::TEXT", &[&"hello world"])
-        .await?;
-
-    let value: &str = rows[0].get(0);
-    println!("{:#?}", value);
-    assert_eq!(value, "hello world");
+    let sql_client = Arc::new(connect_to_db().await?);
 
     // Configure the client with your Discord bot token in the environment.
     let token = env::var("DISCORD_TOKEN")?;
-    let mut client = Client::builder(&token).event_handler(Handler).await?;
+    let mut client = Client::builder(&token)
+        .event_handler(Handler {
+            client: Arc::clone(&sql_client),
+        })
+        .application_id(928312197489229825)
+        .await?;
 
     let http = Arc::clone(&client.cache_and_http.http);
 
-    if let (Err(why), _) = tokio::join!(client.start(), send_matches(&sql_client, http)) {
+    if let (Err(why), _) = tokio::join!(client.start(), send_matches(sql_client, http)) {
         println!("Client error: {:?}", why);
     }
 
