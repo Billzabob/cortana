@@ -29,29 +29,43 @@ struct Handler {
     client: Arc<tokio_postgres::Client>,
 }
 
-static EMOJIS: [&str; 22] = [
+static EMOJIS: [&str; 36] = [
+    "<:AchillesSpine:932071031106072607>",
+    "<:BackSmack:932071030825058384>",
     "<:Boogeyman:931631927486734417>",
+    "<:BoomBlock:932071031072518144>",
+    "<:Boxer:932071030766333982>",
     "<:Demon:931631928120066088>",
     "<:DoubleKill:931631928023597066>",
     "<:Extermination:931631929239949343>",
+    "<:Fastball:932071030950867057>",
+    "<:FromtheGrave:932071030795677717>",
+    "<:Fumble:932071030762119168>",
     "<:GrappleJack:931631927788728342>",
     "<:GrimReaper:931631928136826900>",
+    "<:GuardianAngel:932071031152214016>",
     "<:KillingFrenzy:931631928497541171>",
     "<:KillingSpree:931631928476598302>",
     "<:Killionaire:931631929311244370>",
     "<:Killjoy:931631928585642055>",
     "<:Killtastrophe:931631929667780608>",
     "<:Killtrocity:931631929642590228>",
+    "<:LastShot:932071030862790706>",
+    "<:Marksman:932071031047340073>",
     "<:Nightmare:931631929067986944>",
     "<:Ninja:931631929697136770>",
     "<:NoScope:931631929139277874>",
     "<:Overkill:931631929617448970>",
+    "<:Perfect:932071031181570078>",
     "<:Perfection:931631929646796870>",
     "<:Quigley:931631929663569980>",
     "<:Rampage:931631929420296202>",
+    "<:Reversal:932071031101853736>",
     "<:RunningRiot:931631929621622875>",
     "<:Snipe:931631929575473192>",
     "<:TripleKill:931631929185411124>",
+    "<:Wingman:932071030732767283>",
+    "<:YardSale:932071031068307456>",
 ];
 
 fn name_to_emoji(name: &str) -> Option<&str> {
@@ -64,6 +78,10 @@ fn name_to_emoji(name: &str) -> Option<&str> {
 
 #[async_trait]
 impl EventHandler for Handler {
+    // async fn message(&self, _ctx: Context, message: Message) {
+    //     println!("{}", message.content)
+    // }
+
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
             let content = match command.data.name.as_str() {
@@ -126,10 +144,9 @@ impl EventHandler for Handler {
         })
         .await;
 
-        println!(
-            "I now have the following guild slash commands: {:#?}",
-            commands
-        );
+        if let Err(why) = commands {
+            println!("Error creating commands: {}", why);
+        }
 
         println!("{} is connected!", ready.user.name);
     }
@@ -181,6 +198,7 @@ async fn send_match_results(
     let (result, color) = match outcome {
         Outcome::Win => ("WON", (0, 255, 0)),
         Outcome::Loss => ("LOST", (255, 0, 0)),
+        Outcome::Draw => ("TIED", (0, 0, 255)),
     };
 
     let stats = &data.player.stats.core;
@@ -199,8 +217,11 @@ async fn send_match_results(
         .fold(String::new(), |acc, a| acc + a);
 
     if medal_string.is_empty() {
-        medal_string = "None 😔".to_owned();
+        medal_string = "Nothing special 😔".to_owned();
     }
+
+    let csr = &data.player.progression.as_ref().expect("progression").csr;
+    let csr_change = csr.post_match.value - csr.pre_match.value;
 
     let message = channel_id
         .send_message(http, |m| {
@@ -218,6 +239,7 @@ async fn send_match_results(
                     ),
                     true,
                 )
+                .field("CSR change", csr_change, true)
                 .field(
                     "Accuracy",
                     format!("{}%", stats.shots.accuracy.round()),
@@ -263,7 +285,7 @@ async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
 
     futures::pin_mut!(new_matches);
 
-    let channel = ChannelId(538404211344277504);
+    let channel = ChannelId(931701787658965032);
 
     while let Some(game) = new_matches.next().await {
         println!("{}", game.additional.gamertag);

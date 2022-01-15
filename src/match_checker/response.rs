@@ -24,6 +24,17 @@ pub struct Additional {
 pub struct Details {
     pub category: Category,
     pub map: GameMap,
+    pub playlist: Playlist,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Playlist {
+    pub properties: Properties,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Properties {
+    pub ranked: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,7 +58,7 @@ pub struct Player {
     pub stats: Stats,
     pub rank: usize,
     pub outcome: Outcome,
-    pub progression: Progression,
+    pub progression: Option<Progression>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,7 +75,7 @@ pub struct Csr {
 #[derive(Debug, Deserialize)]
 pub struct CsrResult {
     pub tier: String,
-    pub value: usize,
+    pub value: isize,
     pub tier_start: usize,
     pub sub_tier: usize,
     pub tier_image_url: String,
@@ -75,6 +86,7 @@ pub struct CsrResult {
 pub enum Outcome {
     Win,
     Loss,
+    Draw,
 }
 
 #[derive(Debug, Deserialize)]

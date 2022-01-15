@@ -11,12 +11,10 @@ use tokio::time;
 use tokio_postgres::{Client, Statement};
 
 pub fn check_for_new_matches(client: &Client) -> impl Stream<Item = Response> + '_ {
-    let mut interval = time::interval(Duration::from_secs(5));
+    let mut interval = time::interval(Duration::from_secs(30));
     stream! {
       loop {
         interval.tick().await;
-
-        println!("tick");
 
         let statement = client
             .prepare("update users set latest_match_id = $1 where gamertag = $2")
@@ -69,13 +67,19 @@ async fn get_new_games(client: &Client) -> Vec<(Response, bool)> {
 
             get_latest_match(gamertag).map(move |game| match game {
                 Ok(game) => {
-                    if game.data.first().map(|data| data.id.as_str()) != last_match_id {
+                    let game_data = game.data.first();
+                    if game_data.map(|d| d.id.as_str()) != last_match_id
+                        && game_data.map_or(false, |d| d.details.playlist.properties.ranked)
+                    {
                         Some((game, enabled))
                     } else {
                         None
                     }
                 }
-                _ => None,
+                Err(why) => {
+                    println!("Uh oh: {}", why);
+                    None
+                }
             })
         })
         .collect();
