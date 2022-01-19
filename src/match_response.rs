@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct Response {
+pub struct MatchResponse {
     pub data: Vec<Data>,
     pub additional: Additional,
 }
@@ -34,7 +34,24 @@ pub struct Playlist {
 
 #[derive(Debug, Deserialize)]
 pub struct Properties {
+    pub queue: Option<Queue>,
+    pub input: Option<Input>,
     pub ranked: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Queue {
+    SoloDuo,
+    Open,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Input {
+    Controller,
+    Mnk,
+    Crossplay,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,11 +91,21 @@ pub struct Csr {
 
 #[derive(Debug, Deserialize)]
 pub struct CsrResult {
-    pub tier: String,
+    pub tier: Tier,
     pub value: isize,
     pub tier_start: usize,
     pub sub_tier: usize,
     pub tier_image_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum Tier {
+    Bronze,
+    Silver,
+    Gold,
+    Platinum,
+    Diamond,
+    Onyx,
 }
 
 #[derive(Debug, Deserialize)]

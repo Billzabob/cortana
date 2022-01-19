@@ -1,8 +1,17 @@
+mod emblem_request;
+mod emblem_response;
 mod match_checker;
+mod match_request;
+mod match_response;
 
+use crate::emblem_request::EmblemRequest;
+use crate::emblem_response::EmblemResponse;
+use crate::match_checker::check_for_new_matches;
+use crate::match_response::Input::*;
+use crate::match_response::Queue::*;
+use crate::match_response::Tier::*;
+use crate::match_response::{MatchResponse, Outcome};
 use futures::StreamExt;
-use match_checker::check_for_new_matches;
-use match_checker::response::{Outcome, Response};
 use openssl::ssl::{SslConnector, SslMethod};
 use postgres_openssl::MakeTlsConnector;
 use serenity::model::id::{GuildId, UserId};
@@ -189,7 +198,7 @@ async fn toggle_user(user_id: UserId, client: &tokio_postgres::Client) -> String
 async fn send_match_results(
     http: &Arc<Http>,
     channel_id: ChannelId,
-    response: Response,
+    response: MatchResponse,
 ) -> Result<Message, Box<dyn Error>> {
     let data = response.data.first().ok_or("not at least one match")?;
     let outcome = &data.player.outcome;
@@ -222,6 +231,50 @@ async fn send_match_results(
 
     let csr = &data.player.progression.as_ref().expect("progression").csr;
     let csr_change = csr.post_match.value - csr.pre_match.value;
+    let csr_change = if csr_change > 0 {
+        format!("+{}", csr_change)
+    } else {
+        csr_change.to_string()
+    };
+
+    let rank = match csr.post_match.tier {
+        Bronze => format!(
+            "<:Bronze_Rank_Icon:933098600471363624> Bronze {}",
+            csr.post_match.sub_tier
+        ),
+        Silver => format!(
+            "<:Silver_Rank_Icon:933098600609775646> Silver {}",
+            csr.post_match.sub_tier
+        ),
+        Gold => format!(
+            "<:Gold_Rank_Icon:933098600437776465> Gold {}",
+            csr.post_match.sub_tier
+        ),
+        Platinum => format!(
+            "<:Platinum_Rank_Icon:933098600718802954> Platinum {}",
+            csr.post_match.sub_tier
+        ),
+        Diamond => format!(
+            "<:Diamond_Rank_Icon:933098600488116294> Diamond {}",
+            csr.post_match.sub_tier
+        ),
+        Onyx => "<:Onyx_Rank_Icon:933098600332931143> Onyx".to_owned(),
+    };
+
+    let input = match data.details.playlist.properties.input {
+        Some(Mnk) => "M+K",
+        Some(Controller) => "Controller",
+        Some(Crossplay) => "Crossplay",
+        None => "Unknown",
+    };
+
+    let queue = match data.details.playlist.properties.queue {
+        Some(SoloDuo) => "Solo/Duo",
+        Some(Open) => "Open",
+        None => "Unknown",
+    };
+
+    let playlist = format!("{} {}", queue, input);
 
     let message = channel_id
         .send_message(http, |m| {
@@ -240,13 +293,15 @@ async fn send_match_results(
                     true,
                 )
                 .field("CSR change", csr_change, true)
+                .field("Rank", rank, true)
+                .field("CSR", csr.post_match.value, true)
+                .field("Playlist", playlist, true)
                 .field(
                     "Accuracy",
                     format!("{}%", stats.shots.accuracy.round()),
                     true,
                 )
                 .field("Damage Dealt", stats.damage.dealt, true)
-                .field("Damage Taken", stats.damage.taken, true)
                 .field("Medals", medal_string, true)
                 .image(&data.details.map.asset.thumbnail_url)
                 .url(format!(
@@ -260,6 +315,25 @@ async fn send_match_results(
         .await?;
 
     Ok(message)
+}
+
+async fn get_emblem(gamertag: &str) -> Result<EmblemResponse, Box<dyn Error>> {
+    let request = EmblemRequest {
+        gamertag: gamertag.to_owned(),
+    };
+
+    let token = std::env::var("HALO_API_TOKEN")?;
+
+    let response = reqwest::Client::new()
+        .post("https://halo.api.stdlib.com/infinite@0.3.3/appearance")
+        .bearer_auth(token)
+        .json(&request)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    Ok(response)
 }
 
 async fn connect_to_db() -> Result<tokio_postgres::Client, Box<dyn Error>> {
@@ -316,40 +390,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize)]
-struct Request {
-    gamertag: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct Resp {
-    data: Data,
-}
-
-#[derive(Debug, Deserialize)]
-struct Data {
-    emblem_url: String,
-}
-
-async fn get_emblem(gamertag: &str) -> Result<Resp, Box<dyn Error>> {
-    let request = Request {
-        gamertag: gamertag.to_owned(),
-    };
-
-    let token = std::env::var("HALO_API_TOKEN")?;
-
-    let response = reqwest::Client::new()
-        .post("https://halo.api.stdlib.com/infinite@0.3.3/appearance")
-        .bearer_auth(token)
-        .json(&request)
-        .send()
-        .await?
-        .json()
-        .await?;
-
-    Ok(response)
 }

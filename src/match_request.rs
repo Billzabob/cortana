@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 #[derive(Serialize)]
-pub struct Request<'a> {
+pub struct MatchRequest<'a> {
     pub gamertag: &'a str,
     pub limit: Limit,
 }
