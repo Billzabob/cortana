@@ -1,5 +1,5 @@
 use crate::match_request::{Limit, MatchRequest};
-use crate::match_response::MatchResponse;
+use crate::match_response::{Data, MatchResponse, Outcome};
 use async_stream::stream;
 use futures::{future, FutureExt, Stream};
 use std::error::Error;
@@ -66,7 +66,7 @@ async fn get_new_games(client: &Client) -> Vec<(MatchResponse, bool)> {
                 Ok(game) => {
                     let game_data = game.data.first();
                     if game_data.map(|d| d.id.as_str()) != last_match_id
-                        && game_data.map_or(false, |d| d.details.playlist.properties.ranked)
+                        && game_data.map_or(false, |d| should_keep_match(d))
                     {
                         Some((game, enabled))
                     } else {
@@ -86,6 +86,10 @@ async fn get_new_games(client: &Client) -> Vec<(MatchResponse, bool)> {
         .into_iter()
         .filter_map(std::convert::identity)
         .collect()
+}
+
+fn should_keep_match(data: &Data) -> bool {
+    data.details.playlist.properties.ranked && data.player.outcome != Outcome::Left
 }
 
 async fn get_latest_match(gamertag: &str) -> Result<MatchResponse, Box<dyn Error>> {

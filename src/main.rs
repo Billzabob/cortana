@@ -208,6 +208,7 @@ async fn send_match_results(
         Outcome::Win => ("WON", (0, 255, 0)),
         Outcome::Loss => ("LOST", (255, 0, 0)),
         Outcome::Draw => ("TIED", (0, 0, 255)),
+        Outcome::Left => ("LEFT", (0, 0, 255)),
     };
 
     let stats = &data.player.stats.core;
@@ -237,27 +238,14 @@ async fn send_match_results(
         csr_change.to_string()
     };
 
+    let tier = csr.post_match.sub_tier + 1;
+
     let rank = match csr.post_match.tier {
-        Bronze => format!(
-            "<:Bronze_Rank_Icon:933098600471363624> Bronze {}",
-            csr.post_match.sub_tier
-        ),
-        Silver => format!(
-            "<:Silver_Rank_Icon:933098600609775646> Silver {}",
-            csr.post_match.sub_tier
-        ),
-        Gold => format!(
-            "<:Gold_Rank_Icon:933098600437776465> Gold {}",
-            csr.post_match.sub_tier
-        ),
-        Platinum => format!(
-            "<:Platinum_Rank_Icon:933098600718802954> Platinum {}",
-            csr.post_match.sub_tier
-        ),
-        Diamond => format!(
-            "<:Diamond_Rank_Icon:933098600488116294> Diamond {}",
-            csr.post_match.sub_tier
-        ),
+        Bronze => format!("<:Bronze_Rank_Icon:933098600471363624> Bronze {}", tier),
+        Silver => format!("<:Silver_Rank_Icon:933098600609775646> Silver {}", tier),
+        Gold => format!("<:Gold_Rank_Icon:933098600437776465> Gold {}", tier),
+        Platinum => format!("<:Platinum_Rank_Icon:933098600718802954> Platinum {}", tier),
+        Diamond => format!("<:Diamond_Rank_Icon:933098600488116294> Diamond {}", tier),
         Onyx => "<:Onyx_Rank_Icon:933098600332931143> Onyx".to_owned(),
     };
 

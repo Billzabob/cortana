@@ -108,12 +108,13 @@ pub enum Tier {
     Onyx,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {
     Win,
     Loss,
     Draw,
+    Left,
 }
 
 #[derive(Debug, Deserialize)]
