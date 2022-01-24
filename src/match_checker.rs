@@ -101,7 +101,7 @@ async fn get_latest_match(gamertag: &str) -> Result<MatchResponse, Box<dyn Error
     let token = std::env::var("HALO_API_TOKEN")?;
 
     let response = reqwest::Client::new()
-        .post("https://halo.api.stdlib.com/infinite@0.3.3/stats/matches/list/")
+        .post("https://halo.api.stdlib.com/infinite@0.3.8/stats/matches/list/")
         .bearer_auth(token)
         .json(&request)
         .send()

@@ -128,6 +128,7 @@ pub struct CoreStats {
     pub damage: Damage,
     pub shots: Shots,
     pub breakdowns: Breakdowns,
+    pub kda: f64,
 }
 
 #[derive(Debug, Deserialize)]

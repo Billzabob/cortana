@@ -238,7 +238,7 @@ async fn send_match_results(
         csr_change.to_string()
     };
 
-    let tier = csr.post_match.sub_tier + 1;
+    let tier = csr.post_match.sub_tier;
 
     let rank = match csr.post_match.tier {
         Bronze => format!("<:Bronze_Rank_Icon:933098600471363624> Bronze {}", tier),
@@ -275,20 +275,20 @@ async fn send_match_results(
                 .field(
                     "KDA",
                     format!(
-                        "{}/{}/{}",
-                        stats.summary.kills, stats.summary.deaths, stats.summary.assists
+                        "{}/{}/{} ({})",
+                        stats.summary.kills, stats.summary.deaths, stats.summary.assists, stats.kda
                     ),
                     true,
                 )
                 .field("CSR change", csr_change, true)
-                .field("Rank", rank, true)
-                .field("CSR", csr.post_match.value, true)
+                .field("Rank", format!("{} ({})", rank, csr.post_match.value), true)
                 .field("Playlist", playlist, true)
                 .field(
                     "Accuracy",
                     format!("{}%", stats.shots.accuracy.round()),
                     true,
                 )
+                // TODO: Also show average team damage
                 .field("Damage Dealt", stats.damage.dealt, true)
                 .field("Medals", medal_string, true)
                 .image(&data.details.map.asset.thumbnail_url)
@@ -313,7 +313,7 @@ async fn get_emblem(gamertag: &str) -> Result<EmblemResponse, Box<dyn Error>> {
     let token = std::env::var("HALO_API_TOKEN")?;
 
     let response = reqwest::Client::new()
-        .post("https://halo.api.stdlib.com/infinite@0.3.3/appearance")
+        .post("https://halo.api.stdlib.com/infinite@0.3.8/appearance")
         .bearer_auth(token)
         .json(&request)
         .send()
