@@ -3,15 +3,20 @@ mod emblem_response;
 mod match_checker;
 mod match_request;
 mod match_response;
+mod matches_request;
+mod matches_response;
 
 use crate::emblem_request::EmblemRequest;
 use crate::emblem_response::EmblemResponse;
 use crate::match_checker::check_for_new_matches;
-use crate::match_response::Input::*;
-use crate::match_response::Queue::*;
-use crate::match_response::Tier::*;
-use crate::match_response::{MatchResponse, Outcome};
+use crate::match_request::MatchRequest;
+use crate::match_response::MatchResponse;
+use crate::matches_response::Input::*;
+use crate::matches_response::Outcome;
+use crate::matches_response::Queue::*;
+use crate::matches_response::Tier::*;
 use futures::StreamExt;
+use matches_response::Data;
 use openssl::ssl::{SslConnector, SslMethod};
 use postgres_openssl::MakeTlsConnector;
 use serenity::model::id::{GuildId, UserId};
@@ -198,9 +203,10 @@ async fn toggle_user(user_id: UserId, client: &tokio_postgres::Client) -> String
 async fn send_match_results(
     http: &Arc<Http>,
     channel_id: ChannelId,
-    response: MatchResponse,
+    data: &Data,
+    gamertag: &str,
+    projected_to_win: bool,
 ) -> Result<Message, Box<dyn Error>> {
-    let data = response.data.first().ok_or("not at least one match")?;
     let outcome = &data.player.outcome;
     let timestamp = &data.played_at;
 
@@ -213,11 +219,7 @@ async fn send_match_results(
 
     let stats = &data.player.stats.core;
 
-    let emblem_url = get_emblem(&response.additional.gamertag)
-        .await
-        .expect("emblem")
-        .data
-        .emblem_url;
+    let emblem_url = get_emblem(&gamertag).await.expect("emblem").data.emblem_url;
 
     let medals = &data.player.stats.core.breakdowns.medals;
     let mut medal_string = medals
@@ -264,12 +266,14 @@ async fn send_match_results(
 
     let playlist = format!("{} {}", queue, input);
 
+    let projected_to_win = if projected_to_win { "Yes" } else { "No" };
+
     let message = channel_id
         .send_message(http, |m| {
             m.embed(|e| {
                 e.title(format!(
                     "{} {} a game of {}!",
-                    response.additional.gamertag, result, data.details.category.name
+                    gamertag, result, data.details.category.name
                 ))
                 .color(color)
                 .field(
@@ -282,6 +286,7 @@ async fn send_match_results(
                 )
                 .field("CSR change", csr_change, true)
                 .field("Rank", format!("{} ({})", rank, csr.post_match.value), true)
+                .field("Projected to win?", projected_to_win, true)
                 .field("Playlist", playlist, true)
                 .field(
                     "Accuracy",
@@ -324,6 +329,22 @@ async fn get_emblem(gamertag: &str) -> Result<EmblemResponse, Box<dyn Error>> {
     Ok(response)
 }
 
+async fn get_match(match_id: &str) -> Result<MatchResponse, Box<dyn Error>> {
+    let request = MatchRequest { id: match_id };
+    let token = std::env::var("HALO_API_TOKEN")?;
+
+    let response = reqwest::Client::new()
+        .post("https://halo.api.stdlib.com/infinite@0.3.8/stats/matches/retrieve")
+        .bearer_auth(token)
+        .json(&request)
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    Ok(response)
+}
+
 async fn connect_to_db() -> Result<tokio_postgres::Client, Box<dyn Error>> {
     let connection_string = env::var("DB_CONNECTION_STRING")?;
 
@@ -352,10 +373,31 @@ async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
     while let Some(game) = new_matches.next().await {
         println!("{}", game.additional.gamertag);
 
-        if let Err(why) = send_match_results(&http, channel, game).await {
+        let gamertag = game.additional.gamertag;
+        let game = game.data.first().expect("not at least one game");
+
+        let match_response = get_match(&game.id).await.expect("match with id");
+
+        let projected_to_win = is_projected_to_win(match_response, game.player.team.id);
+
+        if let Err(why) =
+            send_match_results(&http, channel, game, &gamertag, projected_to_win).await
+        {
             println!("Failed sending message: {}", why)
         }
     }
+}
+
+fn is_projected_to_win(match_response: MatchResponse, team_id: usize) -> bool {
+    let (my_team, other_team): (Vec<_>, Vec<_>) = match_response
+        .data
+        .teams
+        .details
+        .iter()
+        .partition(|t| t.team.id == team_id);
+    let my_team = my_team.first().expect("my_team");
+    let other_team = other_team.first().expect("other_team");
+    my_team.team.skill.mmr > other_team.team.skill.mmr
 }
 
 #[tokio::main]

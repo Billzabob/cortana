@@ -1,5 +1,5 @@
-use crate::match_request::{Limit, MatchRequest};
-use crate::match_response::{Data, MatchResponse, Outcome};
+use crate::matches_request::{Limit, MatchesRequest};
+use crate::matches_response::{Data, MatchesResponse, Outcome};
 use async_stream::stream;
 use futures::{future, FutureExt, Stream};
 use std::error::Error;
@@ -7,8 +7,8 @@ use std::time::Duration;
 use tokio::time;
 use tokio_postgres::{Client, Statement};
 
-pub fn check_for_new_matches(client: &Client) -> impl Stream<Item = MatchResponse> + '_ {
-    let mut interval = time::interval(Duration::from_secs(30));
+pub fn check_for_new_matches(client: &Client) -> impl Stream<Item = MatchesResponse> + '_ {
+    let mut interval = time::interval(Duration::from_secs(5));
     stream! {
       loop {
         interval.tick().await;
@@ -37,7 +37,7 @@ pub fn check_for_new_matches(client: &Client) -> impl Stream<Item = MatchRespons
 }
 
 async fn update_match(
-    game: &MatchResponse,
+    game: &MatchesResponse,
     client: &Client,
     statement: &Statement,
 ) -> Result<u64, tokio_postgres::Error> {
@@ -49,7 +49,7 @@ async fn update_match(
         .await
 }
 
-async fn get_new_games(client: &Client) -> Vec<(MatchResponse, bool)> {
+async fn get_new_games(client: &Client) -> Vec<(MatchesResponse, bool)> {
     let rows = client
         .query("select gamertag, latest_match_id, enabled from users", &[])
         .await
@@ -92,8 +92,8 @@ fn should_keep_match(data: &Data) -> bool {
     data.details.playlist.properties.ranked && data.player.outcome != Outcome::Left
 }
 
-async fn get_latest_match(gamertag: &str) -> Result<MatchResponse, Box<dyn Error>> {
-    let request = MatchRequest {
+async fn get_latest_match(gamertag: &str) -> Result<MatchesResponse, Box<dyn Error>> {
+    let request = MatchesRequest {
         gamertag: gamertag,
         limit: Limit { count: 1 },
     };
