@@ -206,6 +206,7 @@ async fn send_match_results(
     data: &Data,
     gamertag: &str,
     projected_to_win: bool,
+    avg_damage: usize,
 ) -> Result<Message, Box<dyn Error>> {
     let outcome = &data.player.outcome;
     let timestamp = &data.played_at;
@@ -286,7 +287,7 @@ async fn send_match_results(
                 )
                 .field("CSR change", csr_change, true)
                 .field("Rank", format!("{} ({})", rank, csr.post_match.value), true)
-                .field("Projected to win?", projected_to_win, true)
+                .field("Projected to Win?", projected_to_win, true)
                 .field("Playlist", playlist, true)
                 .field(
                     "Accuracy",
@@ -294,7 +295,11 @@ async fn send_match_results(
                     true,
                 )
                 // TODO: Also show average team damage
-                .field("Damage Dealt", stats.damage.dealt, true)
+                .field(
+                    "Damage Dealt / Avg Damage",
+                    format!("{} / {}", stats.damage.dealt, avg_damage),
+                    true,
+                )
                 .field("Medals", medal_string, true)
                 .image(&data.details.map.asset.thumbnail_url)
                 .url(format!(
@@ -378,17 +383,32 @@ async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
 
         let match_response = get_match(&game.id).await.expect("match with id");
 
-        let projected_to_win = is_projected_to_win(match_response, game.player.team.id);
+        let projected_to_win = is_projected_to_win(&match_response, game.player.team.id);
+        let overall_damage: usize = match_response
+            .data
+            .players
+            .iter()
+            .map(|player| player.stats.core.damage.dealt)
+            .sum();
 
-        if let Err(why) =
-            send_match_results(&http, channel, game, &gamertag, projected_to_win).await
+        let avg_damage = overall_damage / 8;
+
+        if let Err(why) = send_match_results(
+            &http,
+            channel,
+            game,
+            &gamertag,
+            projected_to_win,
+            avg_damage,
+        )
+        .await
         {
             println!("Failed sending message: {}", why)
         }
     }
 }
 
-fn is_projected_to_win(match_response: MatchResponse, team_id: usize) -> bool {
+fn is_projected_to_win(match_response: &MatchResponse, team_id: usize) -> bool {
     let (my_team, other_team): (Vec<_>, Vec<_>) = match_response
         .data
         .teams

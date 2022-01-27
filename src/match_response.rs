@@ -8,6 +8,12 @@ pub struct MatchResponse {
 #[derive(Debug, Deserialize)]
 pub struct Data {
     pub teams: Teams,
+    pub players: Vec<Player>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Player {
+    pub stats: Stats,
 }
 
 #[derive(Debug, Deserialize)]
@@ -18,6 +24,23 @@ pub struct Teams {
 #[derive(Debug, Deserialize)]
 pub struct TeamDetail {
     pub team: Team,
+    pub stats: Stats,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Stats {
+    pub core: CoreStats,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CoreStats {
+    pub damage: Damage,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Damage {
+    pub dealt: usize,
+    pub taken: usize,
 }
 
 #[derive(Debug, Deserialize)]
