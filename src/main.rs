@@ -269,6 +269,12 @@ async fn send_match_results(
 
     let projected_to_win = if projected_to_win { "Yes" } else { "No" };
 
+    let mut duration = data.duration.seconds;
+    if duration == 0 {
+        duration = 1
+    };
+    let kpm = data.player.stats.core.summary.kills as f64 / (duration as f64 / 60.0);
+
     let message = channel_id
         .send_message(http, |m| {
             m.embed(|e| {
@@ -277,6 +283,11 @@ async fn send_match_results(
                     gamertag, result, data.details.category.name
                 ))
                 .color(color)
+                // playlist rank kda
+                // project csr kpm
+                // accuracy damage medals
+                .field("Playlist", playlist, true)
+                .field("Rank", format!("{} ({})", rank, csr.post_match.value), true)
                 .field(
                     "KDA",
                     format!(
@@ -285,10 +296,9 @@ async fn send_match_results(
                     ),
                     true,
                 )
-                .field("CSR change", csr_change, true)
-                .field("Rank", format!("{} ({})", rank, csr.post_match.value), true)
                 .field("Projected to Win?", projected_to_win, true)
-                .field("Playlist", playlist, true)
+                .field("CSR change", csr_change, true)
+                .field("Kills Per Minute", format!("{:.1}", kpm), true)
                 .field(
                     "Accuracy",
                     format!("{}%", stats.shots.accuracy.round()),

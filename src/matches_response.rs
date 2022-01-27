@@ -13,6 +13,12 @@ pub struct Data {
     pub details: Details,
     pub player: Player,
     pub played_at: DateTime<Utc>,
+    pub duration: Duration,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Duration {
+    pub seconds: usize,
 }
 
 #[derive(Debug, Deserialize)]
