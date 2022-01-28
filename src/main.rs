@@ -207,6 +207,7 @@ async fn send_match_results(
     gamertag: &str,
     projected_to_win: bool,
     avg_damage: usize,
+    avg_kpm: f64,
 ) -> Result<Message, Box<dyn Error>> {
     let outcome = &data.player.outcome;
     let timestamp = &data.played_at;
@@ -283,9 +284,6 @@ async fn send_match_results(
                     gamertag, result, data.details.category.name
                 ))
                 .color(color)
-                // playlist rank kda
-                // project csr kpm
-                // accuracy damage medals
                 .field("Playlist", playlist, true)
                 .field("Rank", format!("{} ({})", rank, csr.post_match.value), true)
                 .field(
@@ -298,7 +296,7 @@ async fn send_match_results(
                 )
                 .field("Projected to Win?", projected_to_win, true)
                 .field("CSR change", csr_change, true)
-                .field("Kills Per Minute", format!("{:.1}", kpm), true)
+                .field("KPM / Avg", format!("{:.1} / {:.1}", kpm, avg_kpm), true)
                 .field(
                     "Accuracy",
                     format!("{}%", stats.shots.accuracy.round()),
@@ -306,7 +304,7 @@ async fn send_match_results(
                 )
                 // TODO: Also show average team damage
                 .field(
-                    "Damage Dealt / Avg Damage",
+                    "Damage Dealt / Avg",
                     format!("{} / {}", stats.damage.dealt, avg_damage),
                     true,
                 )
@@ -391,7 +389,9 @@ async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
         let gamertag = game.additional.gamertag;
         let game = game.data.first().expect("not at least one game");
 
-        let match_response = get_match(&game.id).await.expect("match with id");
+        let match_response = get_match(&game.id)
+            .await
+            .expect(&format!("match with id {}", &game.id));
 
         let projected_to_win = is_projected_to_win(&match_response, game.player.team.id);
         let overall_damage: usize = match_response
@@ -403,6 +403,16 @@ async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
 
         let avg_damage = overall_damage / 8;
 
+        let overall_kills: usize = match_response
+            .data
+            .players
+            .iter()
+            .map(|player| player.stats.core.damage.dealt)
+            .sum();
+
+        let avg_kills = overall_kills as f64 / 8.0;
+        let avg_kpm = avg_kills / game.duration.seconds as f64;
+
         if let Err(why) = send_match_results(
             &http,
             channel,
@@ -410,6 +420,7 @@ async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
             &gamertag,
             projected_to_win,
             avg_damage,
+            avg_kpm,
         )
         .await
         {
