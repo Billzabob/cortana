@@ -112,6 +112,7 @@ pub struct CsrResult {
 
 #[derive(Debug, Deserialize)]
 pub enum Tier {
+    Unranked,
     Bronze,
     Silver,
     Gold,
@@ -151,6 +152,7 @@ pub struct Breakdowns {
 #[derive(Debug, Deserialize)]
 pub struct Medal {
     pub name: String,
+    pub count: usize,
 }
 
 #[derive(Debug, Deserialize)]

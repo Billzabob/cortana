@@ -43,21 +43,32 @@ struct Handler {
     client: Arc<tokio_postgres::Client>,
 }
 
-static EMOJIS: [&str; 36] = [
+static EMOJIS: [&str; 59] = [
     "<:AchillesSpine:932071031106072607>",
+    "<:AlwaysRotating:939744585675067393>",
     "<:BackSmack:932071030825058384>",
+    "<:BankShot:938209152675774475>",
+    "<:Bodyguard:938209152726085712>",
+    "<:Bomber:938136842274996225>",
     "<:Boogeyman:931631927486734417>",
     "<:BoomBlock:932071031072518144>",
     "<:Boxer:932071030766333982>",
+    "<:ClockStop:940066017982427146>",
+    "<:ClusterLuck:940090243145682954>",
     "<:Demon:931631928120066088>",
     "<:DoubleKill:931631928023597066>",
     "<:Extermination:931631929239949343>",
     "<:Fastball:932071030950867057>",
+    "<:FlagJoust:939786696910860341>",
     "<:FromtheGrave:932071030795677717>",
     "<:Fumble:932071030762119168>",
+    "<:GoalLineStand:939786660990836816>",
     "<:GrappleJack:931631927788728342>",
+    "<:Grenadier:938136887430893668>",
     "<:GrimReaper:931631928136826900>",
     "<:GuardianAngel:932071031152214016>",
+    "<:HailMary:938209152105320510>",
+    "<:HoldThis:938209152327647272>",
     "<:KillingFrenzy:931631928497541171>",
     "<:KillingSpree:931631928476598302>",
     "<:Killionaire:931631929311244370>",
@@ -66,28 +77,44 @@ static EMOJIS: [&str; 36] = [
     "<:Killtrocity:931631929642590228>",
     "<:LastShot:932071030862790706>",
     "<:Marksman:932071031047340073>",
+    "<:MindtheGap:938426546157412422>",
+    "<:NadeShot:939786758177058837>",
     "<:Nightmare:931631929067986944>",
     "<:Ninja:931631929697136770>",
     "<:NoScope:931631929139277874>",
+    "<:OfftheRack:938136887229562971>",
     "<:Overkill:931631929617448970>",
+    "<:Pancake:940376937065480263>",
     "<:Perfect:932071031181570078>",
     "<:Perfection:931631929646796870>",
     "<:Quigley:931631929663569980>",
     "<:Rampage:931631929420296202>",
     "<:Reversal:932071031101853736>",
     "<:RunningRiot:931631929621622875>",
+    "<:Scattergunner:938136887288287303>",
+    "<:ShotCaller:938813060506849390>",
+    "<:SneakKing:939503925302820935>",
     "<:Snipe:931631929575473192>",
+    "<:Steaktacular:938136887611228240>",
+    "<:Stick:937788737583202406>",
+    "<:StoppedShort:938677766587572274>",
+    "<:StraightBalling:938426609864679424>",
     "<:TripleKill:931631929185411124>",
+    "<:Whiplash:938813020107329606>",
     "<:Wingman:932071030732767283>",
     "<:YardSale:932071031068307456>",
 ];
 
 fn name_to_emoji(name: &str) -> Option<&str> {
     let name: String = name.chars().filter(|c| !c.is_whitespace()).collect();
-    EMOJIS
+    let result = EMOJIS
         .iter()
         .find(|emoji| emoji.contains(&format!(":{}:", name)))
-        .copied()
+        .copied();
+    if let None = result {
+        println!("No emoji for medal: {}", name);
+    }
+    result
 }
 
 #[async_trait]
@@ -224,15 +251,15 @@ async fn send_match_results(
     let emblem_url = get_emblem(&gamertag).await.expect("emblem").data.emblem_url;
 
     let medals = &data.player.stats.core.breakdowns.medals;
-    let mut medal_string = medals
+    let medal_string: String = medals
         .iter()
-        .map(|m| m.name.as_str())
-        .filter_map(|name| name_to_emoji(name))
-        .fold(String::new(), |acc, a| acc + a);
-
-    if medal_string.is_empty() {
-        medal_string = "Nothing special 😔".to_owned();
-    }
+        .filter_map(|m| name_to_emoji(m.name.as_str()).map(|a| format!("{}x{}", a, m.count)))
+        .reduce(|mut acc, a| {
+            acc.push_str(" ");
+            acc.push_str(a.as_str());
+            acc
+        })
+        .unwrap_or("Nothing special 😔".to_owned());
 
     let csr = &data.player.progression.as_ref().expect("progression").csr;
     let csr_change = csr.post_match.value - csr.pre_match.value;
@@ -242,9 +269,10 @@ async fn send_match_results(
         csr_change.to_string()
     };
 
-    let tier = csr.post_match.sub_tier;
+    let tier = csr.post_match.sub_tier - 1;
 
     let rank = match csr.post_match.tier {
+        Unranked => format!("<:Unranked_Rank_Icon:938636507751800892> Unranked {}", tier),
         Bronze => format!("<:Bronze_Rank_Icon:933098600471363624> Bronze {}", tier),
         Silver => format!("<:Silver_Rank_Icon:933098600609775646> Silver {}", tier),
         Gold => format!("<:Gold_Rank_Icon:933098600437776465> Gold {}", tier),
@@ -401,17 +429,17 @@ async fn send_matches(client: Arc<tokio_postgres::Client>, http: Arc<Http>) {
             .map(|player| player.stats.core.damage.dealt)
             .sum();
 
-        let avg_damage = overall_damage / 8;
+        let avg_damage = overall_damage / match_response.data.players.len();
 
         let overall_kills: usize = match_response
             .data
             .players
             .iter()
-            .map(|player| player.stats.core.damage.dealt)
+            .map(|player| player.stats.core.summary.kills)
             .sum();
 
-        let avg_kills = overall_kills as f64 / 8.0;
-        let avg_kpm = avg_kills / game.duration.seconds as f64;
+        let avg_kills = overall_kills as f64 / match_response.data.players.len() as f64;
+        let avg_kpm = avg_kills / (game.duration.seconds as f64 / 60.0);
 
         if let Err(why) = send_match_results(
             &http,

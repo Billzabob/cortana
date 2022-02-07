@@ -35,6 +35,14 @@ pub struct Stats {
 #[derive(Debug, Deserialize)]
 pub struct CoreStats {
     pub damage: Damage,
+    pub summary: Summary,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Summary {
+    pub kills: usize,
+    pub deaths: usize,
+    pub assists: usize,
 }
 
 #[derive(Debug, Deserialize)]
